@@ -1,0 +1,12 @@
+# Secret files - never upload!
+.env
+
+# Python junk files
+__pycache__/
+*.pyc
+
+# Node modules - too big!
+node_modules/
+
+# Mac junk
+.DS_Store
