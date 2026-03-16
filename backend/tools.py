@@ -1,8 +1,5 @@
 from database import run_query, get_schema as db_schema
 
-# ============================================================
-# TOOL 1 - GET SCHEMA
-# ============================================================
 def get_schema():
     schema = db_schema()
     result = "Database Schema:\n"
@@ -11,135 +8,86 @@ def get_schema():
         result += f"Columns: {', '.join(columns)}\n"
     return result
 
-# ============================================================
-# TOOL 2 - SEARCH PERSON
-# ============================================================
 def search_person(name: str):
-    # Search person
-    persons = run_query(
-        "SELECT * FROM persons WHERE name LIKE %s",
-        (f"%{name}%",)
-    )
+    sql = f"SELECT * FROM persons WHERE name LIKE '%{name}%'"
+    persons = run_query("SELECT * FROM persons WHERE name LIKE %s", (f"%{name}%",))
     if not persons:
-        return {"message": f"No person found with name '{name}'"}
-
+        return {"message": f"No person found with name '{name}'", "sql_executed": sql}
     person = persons[0]
     person_id = person['id']
-
-    # Get their cases
-    cases = run_query(
-        "SELECT * FROM cases WHERE person_id = %s",
-        (person_id,)
-    )
-
-    # Get hearings for each case
+    cases_sql = f"SELECT * FROM cases WHERE person_id = {person_id}"
+    cases = run_query("SELECT * FROM cases WHERE person_id = %s", (person_id,))
     all_hearings = []
     all_judgements = []
     for case in cases:
-        hearings = run_query(
-            "SELECT * FROM hearings WHERE case_id = %s",
-            (case['id'],)
-        )
-        judgements = run_query(
-            "SELECT * FROM judgements WHERE case_id = %s",
-            (case['id'],)
-        )
+        hearings = run_query("SELECT * FROM hearings WHERE case_id = %s", (case['id'],))
+        judgements = run_query("SELECT * FROM judgements WHERE case_id = %s", (case['id'],))
         all_hearings.extend(hearings)
         all_judgements.extend(judgements)
-
     return {
         "person": person,
         "cases": cases,
         "hearings": all_hearings,
         "judgements": all_judgements,
-        "summary": f"{person['name']} has {len(cases)} case(s), {len(all_hearings)} hearing(s), {len(all_judgements)} judgement(s)"
+        "summary": f"{person['name']} has {len(cases)} case(s), {len(all_hearings)} hearing(s), {len(all_judgements)} judgement(s)",
+        "sql_executed": cases_sql
     }
 
-# ============================================================
-# TOOL 3 - SEARCH IPC SECTION
-# ============================================================
 def search_ipc(section: str):
-    # Search in ipc_sections table
-    results = run_query(
-        "SELECT * FROM ipc_sections WHERE section_number LIKE %s LIMIT 5",
-        (f"%{section}%",)
-    )
+    sql = f"SELECT * FROM ipc_sections WHERE section_number LIKE '%{section}%' LIMIT 5"
+    results = run_query("SELECT * FROM ipc_sections WHERE section_number LIKE %s LIMIT 5", (f"%{section}%",))
     if not results:
-        # Search in legal_qa
-        results = run_query(
-            "SELECT * FROM legal_qa WHERE source='ipc' AND question LIKE %s LIMIT 5",
-            (f"%{section}%",)
-        )
-    return results
+        sql = f"SELECT * FROM legal_qa WHERE source='ipc' AND question LIKE '%{section}%' LIMIT 5"
+        results = run_query("SELECT * FROM legal_qa WHERE source='ipc' AND question LIKE %s LIMIT 5", (f"%{section}%",))
+    return {"data": results, "sql_executed": sql}
 
-# ============================================================
-# TOOL 4 - SEARCH LEGAL QA
-# ============================================================
 def search_legal_qa(question: str, source: str = None):
     if source:
-        results = run_query(
-            "SELECT * FROM legal_qa WHERE source = %s AND question LIKE %s LIMIT 5",
-            (source, f"%{question}%")
-        )
+        sql = f"SELECT * FROM legal_qa WHERE source='{source}' AND question LIKE '%{question}%' LIMIT 5"
+        results = run_query("SELECT * FROM legal_qa WHERE source = %s AND question LIKE %s LIMIT 5", (source, f"%{question}%"))
     else:
-        results = run_query(
-            "SELECT * FROM legal_qa WHERE question LIKE %s LIMIT 5",
-            (f"%{question}%",)
-        )
-    return results
+        sql = f"SELECT * FROM legal_qa WHERE question LIKE '%{question}%' LIMIT 5"
+        results = run_query("SELECT * FROM legal_qa WHERE question LIKE %s LIMIT 5", (f"%{question}%",))
+    return {"data": results, "sql_executed": sql}
 
-# ============================================================
-# TOOL 5 - EXECUTE CUSTOM QUERY
-# ============================================================
-def execute_query(query: str):
-    # Safety check - only allow SELECT
-    if not query.strip().upper().startswith("SELECT"):
-        return {"error": "Only SELECT queries allowed!"}
-    results = run_query(query)
-    return results
-
-# ============================================================
-# TOOL 6 - GET CASE STATS (for charts)
-# ============================================================
 def get_case_stats():
-    # Cases by status
-    by_status = run_query(
-        "SELECT status, COUNT(*) as count FROM cases GROUP BY status"
-    )
-    # Cases by type
-    by_type = run_query(
-        "SELECT type, COUNT(*) as count FROM cases GROUP BY type"
-    )
-    # Crime stats by state
-    by_state = run_query(
-        "SELECT state, SUM(incidence) as total FROM ipc_crime_stats GROUP BY state ORDER BY total DESC LIMIT 10"
-    )
+    sql1 = "SELECT status, COUNT(*) as count FROM cases GROUP BY status"
+    sql2 = "SELECT type, COUNT(*) as count FROM cases GROUP BY type"
+    sql3 = "SELECT state, SUM(incidence) as total FROM ipc_crime_stats GROUP BY state ORDER BY total DESC LIMIT 10"
     return {
-        "by_status": by_status,
-        "by_type": by_type,
-        "by_state": by_state
+        "by_status": run_query(sql1),
+        "by_type": run_query(sql2),
+        "by_state": run_query(sql3),
+        "sql_executed": f"1) {sql1}\n2) {sql2}\n3) {sql3}"
     }
 
-# ============================================================
-# TOOL 7 - GENERATE ER DIAGRAM
-# ============================================================
+def get_crime_trends():
+    sql1 = "SELECT year, SUM(incidence) as total_crimes FROM ipc_crime_stats GROUP BY year ORDER BY year"
+    sql2 = "SELECT year, SUM(victims) as total_victims FROM ipc_crime_stats GROUP BY year ORDER BY year"
+    return {
+        "crime_by_year": run_query(sql1),
+        "victims_by_year": run_query(sql2),
+        "sql_executed": f"1) {sql1}\n2) {sql2}",
+        "chart_type": "line"
+    }
+
 def generate_er_diagram():
-    return """
-erDiagram
+    return {
+        "diagram_type": "er",
+        "sql_executed": "SHOW TABLES",
+        "mermaid": """erDiagram
     PERSONS {
         int id PK
         string name
         int age
         string gender
         string phone
-        string aadhaar
         string type
     }
     CASES {
         int id PK
         int person_id FK
         string case_number
-        string title
         string type
         string ipc_section
         date filed_date
@@ -152,7 +100,6 @@ erDiagram
         string judge_name
         string court_name
         date next_date
-        string status
     }
     JUDGEMENTS {
         int id PK
@@ -178,77 +125,44 @@ erDiagram
     CASES ||--o{ JUDGEMENTS : "has"
     CASES }o--|| IPC_SECTIONS : "references"
 """
-
-# ============================================================
-# TOOLS LIST FOR GPT
-# ============================================================
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_person",
-            "description": "Search for a person by name and get all their cases, hearings and judgements",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Person's name to search"}
-                },
-                "required": ["name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_ipc",
-            "description": "Search IPC section details - offense and punishment",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "section": {"type": "string", "description": "IPC section number like 302, 420"}
-                },
-                "required": ["section"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_legal_qa",
-            "description": "Search legal questions and answers about IPC, CrPC, Constitution",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {"type": "string", "description": "Legal question to search"},
-                    "source": {"type": "string", "description": "Source: ipc, crpc, or constitution", "enum": ["ipc", "crpc", "constitution"]}
-                },
-                "required": ["question"],
-                "additionalProperties":False
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_case_stats",
-            "description": "Get statistics about cases for charts and visualizations",
-            "parameters": {"type": "object", "properties": {}}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_er_diagram",
-            "description": "Generate ER diagram of the database in Mermaid format",
-            "parameters": {"type": "object", "properties": {}}
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_schema",
-            "description": "Get the full database schema showing all tables and columns",
-            "parameters": {"type": "object", "properties": {}}
-        }
     }
+
+def generate_process_flow():
+    return {
+        "diagram_type": "process_flow",
+        "sql_executed": "No SQL needed - static diagram",
+        "mermaid": """flowchart TD
+    A[FIR Filed] --> B[Police Investigation]
+    B --> C{Enough Evidence?}
+    C -->|Yes| D[Charge Sheet Filed]
+    C -->|No| E[Case Closed]
+    D --> F[Court Accepts Case]
+    F --> G[Notice to Accused]
+    G --> H[First Hearing]
+    H --> I{Bail Application}
+    I -->|Granted| J[Accused on Bail]
+    I -->|Rejected| K[Accused in Custody]
+    J --> L[Trial Begins]
+    K --> L
+    L --> M[Arguments and Evidence]
+    M --> N[Final Arguments]
+    N --> O[Judgement]
+    O --> P{Verdict}
+    P -->|Guilty| Q[Sentencing]
+    P -->|Not Guilty| R[Acquitted]
+    Q --> S{Appeal?}
+    S -->|Yes| T[High Court Appeal]
+    S -->|No| U[Sentence Served]
+"""
+    }
+
+TOOLS = [
+    {"type": "function", "function": {"name": "search_person", "description": "Search person by name, get cases hearings judgements", "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
+    {"type": "function", "function": {"name": "search_ipc", "description": "Search IPC section details", "parameters": {"type": "object", "properties": {"section": {"type": "string"}}, "required": ["section"]}}},
+    {"type": "function", "function": {"name": "search_legal_qa", "description": "Search legal QA about IPC CrPC Constitution", "parameters": {"type": "object", "properties": {"question": {"type": "string"}, "source": {"type": "string"}}, "required": ["question"]}}},
+    {"type": "function", "function": {"name": "get_case_stats", "description": "Get case statistics for bar and pie charts", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "get_crime_trends", "description": "Get crime trends over years for line chart", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "generate_er_diagram", "description": "Generate ER diagram of database in Mermaid", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "generate_process_flow", "description": "Generate legal case process flow diagram", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "get_schema", "description": "Get full database schema", "parameters": {"type": "object", "properties": {}}}}
 ]
