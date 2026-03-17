@@ -25,7 +25,75 @@ except Exception as e:
 load_dotenv()
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# ============================================================
+# API KEY FALLBACK SYSTEM
+# Tries each key in order — if one fails, uses the next!
+# ============================================================
+GROQ_API_KEYS = [
+    os.getenv("GROQ_API_KEY_1"),
+    os.getenv("GROQ_API_KEY_2"),
+    os.getenv("GROQ_API_KEY_3"),
+ # fallback to old single key
+]
+# Filter out None/empty keys
+GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k and k.strip()]
+
+if not GROQ_API_KEYS:
+    print("❌ No API keys found! Check your .env file!")
+else:
+    print(f"✅ {len(GROQ_API_KEYS)} API key(s) loaded!")
+
+current_key_index = 0
+
+def get_groq_client():
+    """Returns Groq client with current active key"""
+    global current_key_index
+    if not GROQ_API_KEYS:
+        raise Exception("No API keys available!")
+    return Groq(api_key=GROQ_API_KEYS[current_key_index])
+
+def call_groq_with_fallback(messages, max_tokens=1024):
+    """
+    Calls Groq API with automatic fallback to next key if current fails!
+    Tries all available keys before giving up.
+    """
+    global current_key_index
+    last_error = None
+
+    for attempt in range(len(GROQ_API_KEYS)):
+        try:
+            key_index = (current_key_index + attempt) % len(GROQ_API_KEYS)
+            client = Groq(api_key=GROQ_API_KEYS[key_index])
+
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                max_tokens=max_tokens
+            )
+
+            # If successful, update current key index
+            current_key_index = key_index
+            if attempt > 0:
+                print(f"✅ Switched to API key #{key_index + 1} successfully!")
+
+            return response
+
+        except Exception as e:
+            error_msg = str(e).lower()
+            last_error = e
+
+            # Rate limit or auth error — try next key
+            if any(err in error_msg for err in ["rate_limit", "429", "quota", "invalid_api_key", "401", "authentication"]):
+                print(f"⚠️ API key #{key_index + 1} failed ({str(e)[:50]}), trying next key...")
+                continue
+            else:
+                # Other error — don't try other keys
+                raise e
+
+    # All keys exhausted
+    raise Exception(f"All {len(GROQ_API_KEYS)} API keys failed! Last error: {last_error}")
+
 chat_histories = {}
 
 class ChatRequest(BaseModel):
@@ -230,21 +298,75 @@ async def chat(request: ChatRequest):
                     mermaid = tool_result.get("mermaid")
                     mermaid_type = tool_result.get("diagram_type")
 
-        system_prompt = """You are a Legal Assistant AI for Indian courts.
-Answer clearly in simple English. When you get chart/graph data, explain what insights it shows.
-Mention interesting patterns or trends you notice. Be concise and professional."""
+        system_prompt = """You are JurisAI, a professional Legal Assistant for Indian courts.
+
+STRICT FORMATTING RULES - ALWAYS FOLLOW:
+1. NEVER use ### or ## or # for headings - instead write the heading as a plain bold line using **Heading Text**
+2. NEVER use --- or === dividers
+3. For bullet points use simple format: "- item" on its own line
+4. For numbered lists use: "1. item" on its own line  
+5. Use **bold** only for: names, case numbers, IPC sections, important legal terms
+6. Keep responses clean and readable - no raw markdown symbols visible
+7. Always remember full conversation context
+8. If user asks follow-up questions refer to previous messages
+9. Be concise, professional and formal
+
+EMOJI RULES - use these professional emojis naturally:
+⚖️ for legal matters, judgements, laws
+📋 for cases, documents, records
+👤 for persons, accused, complainant
+🏛️ for courts, constitutional matters
+📅 for dates, hearings, schedules
+📊 for charts, statistics, data
+📜 for IPC sections, acts, laws
+✅ for completed, success, granted
+❌ for dismissed, rejected, closed
+⏳ for pending, ongoing matters
+🔍 for search results, findings
+ℹ️ for general information
+📌 for important points
+🗂️ for case files, records
+
+EXAMPLE of good response:
+**📋 Case Summary for Rahul Sharma**
+
+👤 Rahul Sharma has **1 active case** filed under **📜 IPC Section 302**.
+
+**Case Details**
+- 📋 Case Number: CASE/1515/2026
+- ⏳ Status: Pending
+- 📅 Filed: 2024-10-29
+
+**🏛️ Hearings**
+1. 📅 12 September 2025 - Chennai District Court - Adjourned
+2. 📅 30 March 2025 - Kolkata Court - ⏳ Postponed
+
+**⚖️ Judgement**
+- ✅ Result: Guilty
+- 👨‍⚖️ Judge: Hon. Justice Pillai"""
+
+        # Build messages with full conversation history
+        history = chat_histories[session_id][:-1]
+        recent_history = history[-10:] if len(history) > 10 else history
 
         if tool_result:
-            result_str = json.dumps(tool_result, default=str)[:2000]
-            user_content = f"User asked: {request.message}\n\nData: {result_str}\n\nExplain insights from this data clearly."
+            result_str = json.dumps(tool_result, default=str)[:3000]
+            user_content = f"""User asked: {request.message}
+
+Database Result:
+{result_str}
+
+Present this data clearly and professionally following the formatting rules.
+Use **bold** for names, numbers, sections. Use bullet points and numbered lists.
+Do NOT use ### or --- symbols."""
         else:
             user_content = request.message
 
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
-            max_tokens=1024
-        )
+        all_messages = [{"role": "system", "content": system_prompt}]
+        all_messages += recent_history
+        all_messages += [{"role": "user", "content": user_content}]
+
+        response = call_groq_with_fallback(all_messages, max_tokens=1024)
         final_text = response.choices[0].message.content
 
     except Exception as e:
@@ -270,9 +392,21 @@ def vector_status():
         return get_vector_db_stats()
     return {"status": "Vector DB not enabled"}
 
+@app.get("/api-status")
+def api_status():
+    return {
+        "total_keys": len(GROQ_API_KEYS),
+        "active_key_index": current_key_index + 1,
+        "status": f"Using key #{current_key_index + 1} of {len(GROQ_API_KEYS)}"
+    }
+
 @app.get("/")
 def root():
-    return {"status": "Legal Chatbot API Running! 🚀", "vector_db": VECTOR_DB_ENABLED}
+    return {
+        "status": "JurisAI API Running! 🚀",
+        "vector_db": VECTOR_DB_ENABLED,
+        "api_keys_loaded": len(GROQ_API_KEYS)
+    }
 
 if __name__ == "__main__":
     import uvicorn
