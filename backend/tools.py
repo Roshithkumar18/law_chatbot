@@ -53,50 +53,49 @@ def generate_dynamic_er():
         "diagram_type": "er",
         "sql_executed": "SHOW TABLES",
         "mermaid": """erDiagram
-    PERSONS {
-        int id
-        string name
-        string gender
-        string phone
-        string type
-    }
-    CASES {
-        int id
-        int person_id
-        string case_number
-        string type
-        string status
-    }
-    HEARINGS {
-        int id
-        int case_id
-        string hearing_date
-        string judge_name
-        string court_name
-    }
-    JUDGEMENTS {
-        int id
-        int case_id
-        string judge_name
-        string result
-    }
-    IPC_SECTIONS {
-        int id
-        string section_number
-        string offense
-        string punishment
-    }
-    LEGAL_QA {
-        int id
-        string source
-        string question
-        string answer
-    }
-    PERSONS ||--o{ CASES : has
-    CASES ||--o{ HEARINGS : has
-    CASES ||--o{ JUDGEMENTS : has
-    CASES }o--|| IPC_SECTIONS : references
-"""
+PERSONS {
+    int id
+    string name
+    string gender
+    string phone
+    string type
+}
+CASES {
+    int id
+    int person_id
+    string case_number
+    string type
+    string status
+}
+HEARINGS {
+    int id
+    int case_id
+    string hearing_date
+    string judge_name
+    string court_name
+}
+JUDGEMENTS {
+    int id
+    int case_id
+    string judge_name
+    string result
+}
+IPC_SECTIONS {
+    int id
+    string section_number
+    string offense
+    string punishment
+}
+LEGAL_QA {
+    int id
+    string source
+    string question
+    string answer
+}
+PERSONS ||--o{ CASES : has
+CASES ||--o{ HEARINGS : has
+CASES ||--o{ JUDGEMENTS : has
+CASES }o--|| IPC_SECTIONS : references"""
     }
 # ============================================================
 # TOOL 5 - SEARCH PERSON

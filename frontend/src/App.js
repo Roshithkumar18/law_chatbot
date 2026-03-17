@@ -130,15 +130,193 @@ function MermaidRenderer({ code, type }) {
   );
 }
 
-function SQLBox({ sql }) {
+function SQLBox({ sql, userMessage }) {
   const [show, setShow] = useState(false);
   if (!sql) return null;
+
+  // Highlight SQL keywords
+  function highlightSQL(query) {
+    const keywords = ["SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY",
+      "COUNT", "SUM", "JOIN", "ON", "AND", "OR", "LIKE",
+      "LIMIT", "AS", "BY", "DESC", "ASC", "INSERT", "UPDATE"];
+    const parts = query.split(/(\s+|,|\(|\))/);
+    return parts.map((part, i) => {
+      if (keywords.includes(part.trim().toUpperCase())) {
+        return <span key={i} style={{ color: "#2563eb", fontWeight: 700 }}>{part}</span>;
+      }
+      if (part.startsWith("'") || part.startsWith('"')) {
+        return <span key={i} style={{ color: "#16a34a" }}>{part}</span>;
+      }
+      if (/^\d+$/.test(part.trim())) {
+        return <span key={i} style={{ color: "#dc2626" }}>{part}</span>;
+      }
+      return <span key={i} style={{ color: "#374151" }}>{part}</span>;
+    });
+  }
+
   return (
     <div style={{ marginTop: 8 }}>
       <button onClick={() => setShow(!show)} style={styles.sqlBtn}>
         {show ? "🔼 Hide SQL" : "🔍 View SQL Query"}
       </button>
-      {show && <pre style={styles.sqlBox}>{sql}</pre>}
+
+      {show && (
+        <div style={{ marginTop: 8, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+
+          {/* Text to SQL Flow Header */}
+          <div style={{ background: "#f8fafc", padding: "10px 14px", borderBottom: "1px solid #e5e7eb" }}>
+            <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, letterSpacing: 0.5, marginBottom: 8 }}>
+              TEXT TO SQL CONVERSION
+            </div>
+
+            {/* Flow visualization */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+
+              {/* Step 1 - User query */}
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
+                <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 2 }}>User query</div>
+                <div style={{ color: "#1e40af", fontWeight: 600 }}>
+                  {userMessage || "Natural language input"}
+                </div>
+              </div>
+
+              {/* Arrow */}
+              <div style={{ color: "#9ca3af", fontSize: 16, fontWeight: 300 }}>→</div>
+
+              {/* Step 2 - detect_tool */}
+              <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
+                <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 2 }}>Intent detection</div>
+                <div style={{ color: "#7c3aed", fontWeight: 600 }}>detect_tool()</div>
+              </div>
+
+              {/* Arrow */}
+              <div style={{ color: "#9ca3af", fontSize: 16, fontWeight: 300 }}>→</div>
+
+              {/* Step 3 - SQL generated */}
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
+                <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 2 }}>SQL generated</div>
+                <div style={{ color: "#15803d", fontWeight: 600 }}>MySQL query</div>
+              </div>
+
+              {/* Arrow */}
+              <div style={{ color: "#9ca3af", fontSize: 16, fontWeight: 300 }}>→</div>
+
+              {/* Step 4 - Result */}
+              <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
+                <div style={{ color: "#6b7280", fontSize: 10, marginBottom: 2 }}>AI explains</div>
+                <div style={{ color: "#c2410c", fontWeight: 600 }}>Response</div>
+              </div>
+            </div>
+          </div>
+
+          {/* SQL Query with syntax highlighting */}
+          <div style={{ background: "#f9fafb", padding: "12px 16px" }}>
+            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 8, fontWeight: 600 }}>
+              EXECUTED SQL
+            </div>
+            <pre style={{
+              margin: 0, fontSize: 12,
+              fontFamily: "'DM Mono', monospace",
+              lineHeight: 1.8, whiteSpace: "pre-wrap",
+              wordBreak: "break-word"
+            }}>
+              {sql.split('\n').map((line, i) => (
+                <div key={i}>{highlightSQL(line)}</div>
+              ))}
+            </pre>
+          </div>
+
+          {/* Copy SQL button */}
+          <div style={{ padding: "8px 16px", borderTop: "1px solid #e5e7eb", background: "#f8fafc", display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => { navigator.clipboard.writeText(sql); }}
+              style={{ ...styles.actionBtn, fontSize: 11 }}>
+              📋 Copy SQL
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// RESULTS TABLE COMPONENT
+// ============================================================
+function ResultsTable({ data }) {
+  const [show, setShow] = useState(true);
+  if (!data || data.length === 0) return null;
+
+  const columns = Object.keys(data[0]);
+
+  // Format cell value
+  function formatCell(val) {
+    if (val === null || val === undefined) return "-";
+    const str = String(val);
+    if (str.length > 40) return str.substring(0, 40) + "...";
+    return str;
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, letterSpacing: 0.5 }}>
+          QUERY RESULTS — {data.length} row{data.length !== 1 ? "s" : ""}
+        </div>
+        <button onClick={() => setShow(!show)} style={{ ...styles.sqlBtn, padding: "2px 8px", fontSize: 11 }}>
+          {show ? "Hide table" : "Show table"}
+        </button>
+      </div>
+
+      {show && (
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
+          {/* Table header */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "'DM Mono', monospace" }}>
+              <thead>
+                <tr style={{ background: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>
+                  {columns.map((col, i) => (
+                    <th key={i} style={{
+                      padding: "8px 12px", textAlign: "left",
+                      color: "#374151", fontWeight: 600,
+                      fontSize: 11, whiteSpace: "nowrap",
+                      letterSpacing: 0.3,
+                      borderRight: i < columns.length - 1 ? "1px solid #e5e7eb" : "none"
+                    }}>
+                      {col.toUpperCase()}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #f3f4f6", background: i % 2 === 0 ? "#ffffff" : "#fafafa" }}>
+                    {columns.map((col, j) => (
+                      <td key={j} style={{
+                        padding: "7px 12px",
+                        color: "#374151",
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                        borderRight: j < columns.length - 1 ? "1px solid #f3f4f6" : "none",
+                        maxWidth: 200,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      }}>
+                        {formatCell(row[col])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div style={{ background: "#f9fafb", padding: "6px 12px", borderTop: "1px solid #e5e7eb", fontSize: 11, color: "#9ca3af" }}>
+            {data.length} record{data.length !== 1 ? "s" : ""} retrieved · {columns.length} column{columns.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -551,7 +729,7 @@ export default function App() {
                       {msg.role === "user" ? msg.content : renderMarkdown(msg.content)}
                     </div>
                     {msg.role === "assistant" && <MessageActions content={msg.content} />}
-                    {msg.sql_executed && <SQLBox sql={msg.sql_executed} />}
+                    {msg.sql_executed && <SQLBox sql={msg.sql_executed} userMessage={messages[i-1]?.content} />}
                     {msg.dynamic_chart && <DynamicChart chartData={msg.dynamic_chart} />}
                     {msg.line_data && <LineChartRenderer lineData={msg.line_data} />}
                     {msg.mermaid && <MermaidRenderer code={msg.mermaid} type={msg.mermaid_type} />}

@@ -34,7 +34,7 @@ GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
     os.getenv("GROQ_API_KEY_2"),
     os.getenv("GROQ_API_KEY_3"),
- # fallback to old single key
+    os.getenv("GROQ_API_KEY"),  # fallback to old single key
 ]
 # Filter out None/empty keys
 GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k and k.strip()]
@@ -374,6 +374,14 @@ Do NOT use ### or --- symbols."""
 
     chat_histories[session_id].append({"role": "assistant", "content": final_text})
 
+    # Extract raw tabular results for table display
+    query_results = None
+    if tool_result and isinstance(tool_result, dict):
+        if "data" in tool_result and isinstance(tool_result["data"], list):
+            query_results = tool_result["data"][:20]  # max 20 rows
+        elif "person" in tool_result:
+            query_results = [tool_result["person"]] if tool_result.get("person") else None
+
     return {
         "response": final_text,
         "chart_data": None,
@@ -383,6 +391,7 @@ Do NOT use ### or --- symbols."""
         "mermaid_type": mermaid_type,
         "tool_used": tool_used,
         "sql_executed": sql_executed,
+        "query_results": query_results,
         "vector_db_enabled": VECTOR_DB_ENABLED
     }
 
